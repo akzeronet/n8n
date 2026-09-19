@@ -1,10 +1,9 @@
 const argv1 = process.argv[1] || '';
-const args = process.argv.slice(2);
+const commandName = process.argv[2] ?? 'start';
 
 const isN8nCli = /\/bin\/n8n$/.test(argv1);
-const nonMainCommands = new Set(['worker', 'webhook']);
-const isMainProcess = isN8nCli && !args.some((arg) => nonMainCommands.has(arg));
+const isMainStart = isN8nCli && commandName === 'start';
 
-if (isMainProcess) {
+if (isMainStart) {
   await import('./preload.mjs');
 }
