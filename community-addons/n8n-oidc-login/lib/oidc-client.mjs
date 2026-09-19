@@ -1,23 +1,24 @@
-import * as oidc from 'openid-client';
-
 export class N8nCommunityOidcClient {
   #configurationPromise;
 
-  constructor(config) {
+  constructor(config, openidClient) {
     this.config = config;
+    this.oidc = openidClient;
   }
 
   async configuration() {
     if (!this.#configurationPromise) {
-      this.#configurationPromise = oidc.discovery(
-        new URL(this.config.discoveryUrl),
-        this.config.clientId,
-        this.config.clientSecret,
-      ).then((configuration) => {
-        const issuer = configuration.serverMetadata().issuer;
-        if (!issuer) throw new Error('OIDC discovery response did not contain an issuer');
-        return configuration;
-      });
+      this.#configurationPromise = this.oidc
+        .discovery(
+          new URL(this.config.discoveryUrl),
+          this.config.clientId,
+          this.config.clientSecret,
+        )
+        .then((configuration) => {
+          const issuer = configuration.serverMetadata().issuer;
+          if (!issuer) throw new Error('OIDC discovery response did not contain an issuer');
+          return configuration;
+        });
     }
 
     return await this.#configurationPromise;
@@ -25,11 +26,10 @@ export class N8nCommunityOidcClient {
 
   async begin() {
     const configuration = await this.configuration();
-
-    const verifier = oidc.randomPKCECodeVerifier();
-    const challenge = await oidc.calculatePKCECodeChallenge(verifier);
-    const nonce = oidc.randomNonce();
-    const state = oidc.randomState();
+    const verifier = this.oidc.randomPKCECodeVerifier();
+    const challenge = await this.oidc.calculatePKCECodeChallenge(verifier);
+    const nonce = this.oidc.randomNonce();
+    const state = this.oidc.randomState();
 
     const parameters = {
       redirect_uri: this.config.redirectUri,
@@ -43,18 +43,17 @@ export class N8nCommunityOidcClient {
     if (this.config.prompt) parameters.prompt = this.config.prompt;
 
     return {
-      authorizationUrl: oidc.buildAuthorizationUrl(configuration, parameters),
+      authorizationUrl: this.oidc.buildAuthorizationUrl(configuration, parameters),
       transaction: { verifier, nonce, state },
     };
   }
 
   async finish(queryString, transaction) {
     const configuration = await this.configuration();
-
     const currentUrl = new URL(this.config.redirectUri);
     currentUrl.search = queryString.startsWith('?') ? queryString : `?${queryString}`;
 
-    const tokens = await oidc.authorizationCodeGrant(configuration, currentUrl, {
+    const tokens = await this.oidc.authorizationCodeGrant(configuration, currentUrl, {
       pkceCodeVerifier: transaction.verifier,
       expectedNonce: transaction.nonce,
       expectedState: transaction.state,
@@ -70,7 +69,7 @@ export class N8nCommunityOidcClient {
     const metadata = configuration.serverMetadata();
 
     if (tokens.access_token && metadata.userinfo_endpoint) {
-      userInfo = await oidc.fetchUserInfo(
+      userInfo = await this.oidc.fetchUserInfo(
         configuration,
         tokens.access_token,
         idTokenClaims.sub,

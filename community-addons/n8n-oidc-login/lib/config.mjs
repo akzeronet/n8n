@@ -4,11 +4,9 @@ const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 function parseBoolean(env, name, defaultValue) {
   const raw = env[name];
   if (raw === undefined || raw === '') return defaultValue;
-
   const value = raw.trim().toLowerCase();
   if (TRUE_VALUES.has(value)) return true;
   if (FALSE_VALUES.has(value)) return false;
-
   throw new Error(`${name} must be one of true/false, 1/0, yes/no, on/off`);
 }
 
@@ -26,7 +24,6 @@ function csv(value) {
 function boundedInteger(env, name, defaultValue, min, max) {
   const raw = env[name];
   if (raw === undefined || raw === '') return defaultValue;
-
   const value = Number.parseInt(raw, 10);
   if (!Number.isInteger(value) || value < min || value > max) {
     throw new Error(`${name} must be an integer between ${min} and ${max}`);
@@ -48,11 +45,9 @@ function normalizeHttpsUrl(raw, name, allowInsecureHttp) {
 
 function normalizeBaseUrl(raw, allowInsecureHttp) {
   const url = normalizeHttpsUrl(raw, 'N8N_OIDC_BASE_URL', allowInsecureHttp);
-
   if (url.search || (url.pathname !== '/' && url.pathname !== '')) {
     throw new Error('N8N_OIDC_BASE_URL must be an origin only, for example https://n8n.example.com');
   }
-
   return url.origin;
 }
 
@@ -97,11 +92,9 @@ export function loadConfig(env = process.env) {
     600,
   );
 
-  const baseProtocol = new URL(baseUrl).protocol;
-
   return Object.freeze({
     enabled: true,
-    n8nRoot: env.N8N_OIDC_N8N_ROOT?.trim() || '/usr/local/lib/node_modules/n8n',
+    n8nRoot: env.N8N_OIDC_N8N_ROOT?.trim() || undefined,
     baseUrl,
     redirectUri: `${baseUrl}/oidc/callback`,
     successRedirect: normalizeSuccessPath(env.N8N_OIDC_SUCCESS_REDIRECT),
@@ -109,7 +102,7 @@ export function loadConfig(env = process.env) {
     clientId: required(env, 'N8N_OIDC_CLIENT_ID'),
     clientSecret: required(env, 'N8N_OIDC_CLIENT_SECRET'),
     cookieSecret,
-    cookieSecure: baseProtocol === 'https:',
+    cookieSecure: new URL(baseUrl).protocol === 'https:',
     transactionTtlSeconds,
     scopes,
     prompt: env.N8N_OIDC_PROMPT?.trim() || undefined,

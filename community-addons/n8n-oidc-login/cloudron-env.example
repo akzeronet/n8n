@@ -1,0 +1,27 @@
+# Append the addon preload. Do not discard an existing NODE_OPTIONS value.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --import=/app/data/n8n-oidc-login/preload.mjs"
+
+export N8N_OIDC_ENABLED=true
+# Optional because v0.2 autodetects this Cloudron path, but explicit is clearer.
+export N8N_OIDC_N8N_ROOT="/app/code/node_modules/n8n"
+
+# Cloudron supplies CLOUDRON_APP_ORIGIN to the app.
+export N8N_OIDC_BASE_URL="${CLOUDRON_APP_ORIGIN}"
+
+# Create an external client in Cloudron: Users -> OpenID.
+export N8N_OIDC_DISCOVERY_URL="https://my.example.com/.well-known/openid-configuration"
+export N8N_OIDC_CLIENT_ID="replace-me"
+export N8N_OIDC_CLIENT_SECRET="replace-me"
+
+# Independent addon secret. Generate with:
+# node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+export N8N_OIDC_COOKIE_SECRET="replace-with-at-least-32-random-characters"
+
+export N8N_OIDC_SCOPES="openid,profile,email"
+export N8N_OIDC_REQUIRE_EMAIL_VERIFIED=true
+export N8N_OIDC_ALLOW_EMAIL_LINKING=true
+export N8N_OIDC_MFA_MODE=idp-amr
+
+# Optional after confirming the exact claims emitted by your IdP:
+# export N8N_OIDC_ALLOWED_GROUPS="n8n-users"
+# export N8N_OIDC_GROUPS_CLAIM="groups"
