@@ -1,0 +1,15 @@
+{
+  "name": "n8n-community-oidc-login",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "description": "Generic OIDC login addon for self-hosted n8n without patching n8n core files.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.16"
+  },
+  "scripts": {
+    "check": "for f in bootstrap.mjs preload.mjs lib/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && node --check cloudron-hook.cjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

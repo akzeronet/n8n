@@ -1,0 +1,27 @@
+services:
+  n8n:
+    build:
+      context: .
+      args:
+        N8N_IMAGE: n8nio/n8n:2.40.0
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_OIDC_ENABLED: "true"
+      N8N_OIDC_BASE_URL: "https://n8n.example.com"
+      N8N_OIDC_DISCOVERY_URL: "https://idp.example.com/.well-known/openid-configuration"
+      N8N_OIDC_CLIENT_ID: "n8n"
+      N8N_OIDC_CLIENT_SECRET: "${N8N_OIDC_CLIENT_SECRET}"
+      N8N_OIDC_COOKIE_SECRET: "${N8N_OIDC_COOKIE_SECRET}"
+      N8N_OIDC_REQUIRE_EMAIL_VERIFIED: "true"
+      N8N_OIDC_ALLOW_EMAIL_LINKING: "true"
+      # Optional: only permit selected IdP groups.
+      # N8N_OIDC_ALLOWED_GROUPS: "automation,n8n-users"
+      # N8N_OIDC_GROUPS_CLAIM: "groups"
+      # MFA policy: deny | idp-amr | trust-idp
+      N8N_OIDC_MFA_MODE: "idp-amr"
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:

@@ -1,0 +1,39 @@
+# n8n Cloudron 2.39.x - Generic OIDC login addon
+# Append to /app/data/env.sh
+
+export EXTERNAL_HOOK_FILES="${EXTERNAL_HOOK_FILES:+${EXTERNAL_HOOK_FILES}:}/app/data/n8n-oidc-login/cloudron-hook.cjs"
+
+export N8N_OIDC_ENABLED=true
+export N8N_OIDC_N8N_ROOT="/app/code"
+export N8N_OIDC_BASE_URL="${CLOUDRON_APP_ORIGIN}"
+
+# Cloudron OIDC provider
+export N8N_OIDC_DISCOVERY_URL="${CLOUDRON_API_ORIGIN}/.well-known/openid-configuration"
+export N8N_OIDC_EXPECTED_ISSUER="${CLOUDRON_API_ORIGIN}/openid"
+export N8N_OIDC_CLIENT_ID="replace-me"
+export N8N_OIDC_CLIENT_SECRET="replace-me"
+
+# Independent addon secret:
+# node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+export N8N_OIDC_COOKIE_SECRET="replace-with-at-least-32-random-characters"
+
+# groups is auto-added when N8N_OIDC_ALLOWED_GROUPS is non-empty and
+# N8N_OIDC_GROUPS_CLAIM=groups, but listing it explicitly is clearer.
+export N8N_OIDC_SCOPES="openid,profile,email,groups"
+
+# First-link bootstrap only. Permanent identity is issuer + sub.
+export N8N_OIDC_REQUIRE_EMAIL_VERIFIED=true
+export N8N_OIDC_ALLOW_EMAIL_LINKING=true
+
+# Access gate: exact, case-sensitive group names.
+export N8N_OIDC_ALLOWED_GROUPS="n8n-users"
+export N8N_OIDC_GROUPS_CLAIM="groups"
+export N8N_OIDC_GROUP_MATCH="any"
+export N8N_OIDC_STRICT_GROUPS_CLAIM=true
+
+export N8N_OIDC_MFA_MODE=idp-amr
+export N8N_OIDC_DEBUG=false
+
+# Once administrative pre-link provisioning is deployed, production can disable
+# first-login email claiming:
+# export N8N_OIDC_ALLOW_EMAIL_LINKING=false
