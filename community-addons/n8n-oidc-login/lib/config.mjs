@@ -10,6 +10,14 @@ function parseBoolean(env, name, defaultValue) {
   throw new Error(`${name} must be one of true/false, 1/0, yes/no, on/off`);
 }
 
+function parseEnum(env, name, defaultValue, allowed) {
+  const value = (env[name] || defaultValue).trim().toLowerCase();
+  if (!allowed.includes(value)) {
+    throw new Error(`${name} must be one of ${allowed.join(', ')}`);
+  }
+  return value;
+}
+
 function required(env, name) {
   const value = env[name]?.trim();
   if (!value) throw new Error(`${name} is required when N8N_OIDC_ENABLED=true`);
@@ -39,6 +47,9 @@ function normalizeHttpsUrl(raw, name, allowInsecureHttp) {
   if (url.protocol !== 'https:' && !allowInsecureHttp) {
     throw new Error(`${name} must use https unless N8N_OIDC_ALLOW_INSECURE_HTTP=true`);
   }
+  if (url.username || url.password) {
+    throw new Error(`${name} must not contain URL credentials`);
+  }
   url.hash = '';
   return url;
 }
@@ -51,10 +62,22 @@ function normalizeBaseUrl(raw, allowInsecureHttp) {
   return url.origin;
 }
 
+function normalizeIssuer(raw, allowInsecureHttp) {
+  if (!raw?.trim()) return undefined;
+  const url = normalizeHttpsUrl(raw.trim(), 'N8N_OIDC_EXPECTED_ISSUER', allowInsecureHttp);
+  if (url.search) throw new Error('N8N_OIDC_EXPECTED_ISSUER must not contain a query string');
+  return url.href.replace(/\/$/, '');
+}
+
 function normalizeSuccessPath(raw) {
   const value = raw?.trim() || '/';
-  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
-    throw new Error('N8N_OIDC_SUCCESS_REDIRECT must be a local absolute path beginning with /');
+  if (
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.includes('\\') ||
+    /[\u0000-\u001F\u007F]/.test(value)
+  ) {
+    throw new Error('N8N_OIDC_SUCCESS_REDIRECT must be a safe local absolute path beginning with /');
   }
   return value;
 }
@@ -71,18 +94,32 @@ export function loadConfig(env = process.env) {
     allowInsecureHttp,
   ).href;
 
+  const expectedIssuer = normalizeIssuer(env.N8N_OIDC_EXPECTED_ISSUER, allowInsecureHttp);
+
   const cookieSecret = required(env, 'N8N_OIDC_COOKIE_SECRET');
   if (cookieSecret.length < 32) {
     throw new Error('N8N_OIDC_COOKIE_SECRET must contain at least 32 characters');
   }
 
+  const groupsClaim = env.N8N_OIDC_GROUPS_CLAIM?.trim() || 'groups';
+  const allowedGroups = csv(env.N8N_OIDC_ALLOWED_GROUPS);
+  const groupMatch = parseEnum(env, 'N8N_OIDC_GROUP_MATCH', 'any', ['any', 'all']);
+  const strictGroupsClaim = parseBoolean(env, 'N8N_OIDC_STRICT_GROUPS_CLAIM', true);
+
   const scopes = csv(env.N8N_OIDC_SCOPES || 'openid,profile,email');
   if (!scopes.includes('openid')) scopes.unshift('openid');
 
-  const mfaMode = (env.N8N_OIDC_MFA_MODE || 'idp-amr').trim().toLowerCase();
-  if (!['deny', 'idp-amr', 'trust-idp'].includes(mfaMode)) {
-    throw new Error('N8N_OIDC_MFA_MODE must be deny, idp-amr, or trust-idp');
+  // Cloudron and many other providers expose the standard-named groups claim only
+  // when the groups scope is requested. Auto-request it when the group gate is enabled.
+  if (allowedGroups.length > 0 && groupsClaim === 'groups' && !scopes.includes('groups')) {
+    scopes.push('groups');
   }
+
+  const mfaMode = parseEnum(env, 'N8N_OIDC_MFA_MODE', 'idp-amr', [
+    'deny',
+    'idp-amr',
+    'trust-idp',
+  ]);
 
   const transactionTtlSeconds = boundedInteger(
     env,
@@ -99,6 +136,7 @@ export function loadConfig(env = process.env) {
     redirectUri: `${baseUrl}/oidc/callback`,
     successRedirect: normalizeSuccessPath(env.N8N_OIDC_SUCCESS_REDIRECT),
     discoveryUrl,
+    expectedIssuer,
     clientId: required(env, 'N8N_OIDC_CLIENT_ID'),
     clientSecret: required(env, 'N8N_OIDC_CLIENT_SECRET'),
     cookieSecret,
@@ -106,12 +144,15 @@ export function loadConfig(env = process.env) {
     transactionTtlSeconds,
     scopes,
     prompt: env.N8N_OIDC_PROMPT?.trim() || undefined,
+    debugLog: parseBoolean(env, 'N8N_OIDC_DEBUG', false),
     requireEmailVerified: parseBoolean(env, 'N8N_OIDC_REQUIRE_EMAIL_VERIFIED', true),
     allowEmailLinking: parseBoolean(env, 'N8N_OIDC_ALLOW_EMAIL_LINKING', true),
     emailClaim: env.N8N_OIDC_EMAIL_CLAIM?.trim() || 'email',
     emailVerifiedClaim: env.N8N_OIDC_EMAIL_VERIFIED_CLAIM?.trim() || 'email_verified',
-    groupsClaim: env.N8N_OIDC_GROUPS_CLAIM?.trim() || 'groups',
-    allowedGroups: csv(env.N8N_OIDC_ALLOWED_GROUPS),
+    groupsClaim,
+    allowedGroups,
+    groupMatch,
+    strictGroupsClaim,
     mfaMode,
     mfaAmrValues: csv(env.N8N_OIDC_MFA_AMR_VALUES || 'mfa,otp,hwk,swk'),
     mfaAcrValues: csv(env.N8N_OIDC_MFA_ACR_VALUES),

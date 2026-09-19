@@ -18,14 +18,49 @@ function normalizeStringArray(value) {
   return [];
 }
 
-function assertGroupAccess(claims, config) {
+export function normalizeGroupsClaim(value, strict = true) {
+  if (value === undefined || value === null) {
+    throw new OidcAccessError('OIDC groups claim is missing');
+  }
+
+  if (Array.isArray(value)) {
+    if (strict && value.some((entry) => typeof entry !== 'string')) {
+      throw new OidcAccessError('OIDC groups claim has an invalid format');
+    }
+
+    const groups = value
+      .filter((entry) => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    if (groups.length === 0) {
+      throw new OidcAccessError('OIDC groups claim is empty');
+    }
+
+    return [...new Set(groups)];
+  }
+
+  if (!strict && typeof value === 'string' && value.trim()) {
+    return [value.trim()];
+  }
+
+  throw new OidcAccessError('OIDC groups claim has an invalid format');
+}
+
+export function assertGroupAccess(claims, config) {
   if (config.allowedGroups.length === 0) return;
 
-  const groups = new Set(normalizeStringArray(claim(claims, config.groupsClaim)));
-  const allowed = config.allowedGroups.some((group) => groups.has(group));
+  const groups = new Set(
+    normalizeGroupsClaim(claim(claims, config.groupsClaim), config.strictGroupsClaim),
+  );
+
+  const allowed =
+    config.groupMatch === 'all'
+      ? config.allowedGroups.every((group) => groups.has(group))
+      : config.allowedGroups.some((group) => groups.has(group));
 
   if (!allowed) {
-    throw new OidcAccessError('OIDC account is not a member of an allowed group');
+    throw new OidcAccessError('OIDC account is not a member of the required group set');
   }
 }
 
@@ -77,8 +112,16 @@ export async function resolveExistingN8nUser({ runtime, config, oidcResult }) {
   const issuer = String(claims.iss || oidcResult.issuer || '');
   const subject = String(claims.sub || '');
 
-  if (!issuer || !subject) throw new OidcAccessError('OIDC identity is missing issuer or subject', 401);
+  if (!issuer || !subject) {
+    throw new OidcAccessError('OIDC identity is missing issuer or subject', 401);
+  }
 
+  if (config.expectedIssuer && issuer !== config.expectedIssuer) {
+    throw new OidcAccessError('OIDC issuer does not match the configured issuer', 401);
+  }
+
+  // Group authorization is evaluated on EVERY login, including already-linked users.
+  // Removing a user from the allowed IdP group therefore revokes future OIDC logins.
   assertGroupAccess(claims, config);
 
   const providerId = providerIdFor(issuer, subject);
@@ -100,7 +143,7 @@ export async function resolveExistingN8nUser({ runtime, config, oidcResult }) {
 
   if (!config.allowEmailLinking) {
     throw new OidcAccessError(
-      'OIDC identity is not linked and N8N_OIDC_ALLOW_EMAIL_LINKING=false',
+      'OIDC identity is not pre-linked and email linking is disabled',
     );
   }
 
@@ -125,6 +168,8 @@ export async function resolveExistingN8nUser({ runtime, config, oidcResult }) {
 
   assertUsableUser(user);
 
+  // Never re-link an n8n account automatically if it already has a different OIDC
+  // identity. This blocks "same email, different subject" account claiming.
   const conflictingOidcIdentity = user.authIdentities?.find(
     (candidate) =>
       candidate.providerType === 'oidc' &&
@@ -135,8 +180,7 @@ export async function resolveExistingN8nUser({ runtime, config, oidcResult }) {
     throw new OidcAccessError('This n8n user is already linked to another OIDC identity');
   }
 
-  // Validate access policy before persisting a first-login identity binding.
-  // A rejected MFA policy must not mutate the n8n account.
+  // Validate all access policy before persisting a first-login identity binding.
   const usedMfa = assertMfaPolicy(user, claims, config);
 
   const newIdentity = runtime.AuthIdentity.create(user, providerId, 'oidc');
@@ -144,7 +188,7 @@ export async function resolveExistingN8nUser({ runtime, config, oidcResult }) {
   try {
     await identityRepository.save(newIdentity, { transaction: false });
   } catch (error) {
-    // A concurrent first login may win the unique constraint race. Re-read the canonical link.
+    // Concurrent first logins converge on the database unique constraint.
     const unique =
       typeof runtime.isUniqueConstraintError === 'function' &&
       runtime.isUniqueConstraintError(error);

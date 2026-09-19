@@ -8,7 +8,15 @@ const TRANSACTION_COOKIE = 'n8n-community-oidc-tx';
 
 function safeReturnPath(value, fallback) {
   if (typeof value !== 'string') return fallback;
-  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return fallback;
+  if (
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.includes('\\') ||
+    /[\u0000-\u001F\u007F]/.test(value) ||
+    value.length > 2048
+  ) {
+    return fallback;
+  }
   if (value.startsWith('/oidc')) return fallback;
   return value;
 }
@@ -35,6 +43,15 @@ function clearTransactionCookie(res, config) {
 function applyMethodDecorator(decorator, klass, methodName) {
   const descriptor = Object.getOwnPropertyDescriptor(klass.prototype, methodName);
   decorator(klass.prototype, methodName, descriptor);
+}
+
+function logFailure(stage, reference, error, debugLog) {
+  const safe = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  process.stderr.write(`${PREFIX} ${stage} failed [${reference}] ${safe}\n`);
+
+  if (debugLog && error instanceof Error && error.stack) {
+    process.stderr.write(`${PREFIX} debug [${reference}] ${error.stack}\n`);
+  }
 }
 
 export function registerOidcController({ runtime, config, oidcClient }) {
@@ -67,8 +84,7 @@ export function registerOidcController({ runtime, config, oidcClient }) {
         res.set('Cache-Control', 'no-store');
         res.redirect(302, authorizationUrl.href);
       } catch (error) {
-        const detail = error instanceof Error ? error.stack ?? error.message : String(error);
-        process.stderr.write(`${PREFIX} login initiation failed [${reference}] ${detail}\n`);
+        logFailure('login initiation', reference, error, config.debugLog);
         publicFailure(res, 500, reference);
       }
     }
@@ -119,8 +135,7 @@ export function registerOidcController({ runtime, config, oidcClient }) {
             ? error.statusCode
             : 401;
 
-        const detail = error instanceof Error ? error.stack ?? error.message : String(error);
-        process.stderr.write(`${PREFIX} callback failed [${reference}] ${detail}\n`);
+        logFailure('callback', reference, error, config.debugLog);
         publicFailure(res, statusCode, reference);
       }
     }

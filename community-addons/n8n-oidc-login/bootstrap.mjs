@@ -1,9 +1,13 @@
 const argv1 = process.argv[1] || '';
-const commandName = process.argv[2] ?? 'start';
+const args = process.argv.slice(2);
 
-const isN8nCli = /\/bin\/n8n$/.test(argv1);
-const isMainStart = isN8nCli && commandName === 'start';
+const isN8nCli =
+  /\/n8n\/bin\/n8n$/.test(argv1) ||
+  /\/node_modules\/\.bin\/n8n$/.test(argv1);
 
-if (isMainStart) {
+const nonMainCommands = new Set(['worker', 'webhook']);
+const isMainProcess = isN8nCli && !args.some((arg) => nonMainCommands.has(arg));
+
+if (isMainProcess) {
   await import('./preload.mjs');
 }

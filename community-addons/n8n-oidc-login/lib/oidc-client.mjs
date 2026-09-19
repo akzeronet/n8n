@@ -17,6 +17,11 @@ export class N8nCommunityOidcClient {
         .then((configuration) => {
           const issuer = configuration.serverMetadata().issuer;
           if (!issuer) throw new Error('OIDC discovery response did not contain an issuer');
+
+          if (this.config.expectedIssuer && issuer !== this.config.expectedIssuer) {
+            throw new Error('OIDC discovery issuer does not match N8N_OIDC_EXPECTED_ISSUER');
+          }
+
           return configuration;
         });
     }
@@ -65,15 +70,26 @@ export class N8nCommunityOidcClient {
       throw new Error('OIDC ID token did not contain a subject');
     }
 
-    let userInfo = {};
     const metadata = configuration.serverMetadata();
+    if (!metadata.issuer || idTokenClaims.iss !== metadata.issuer) {
+      throw new Error('OIDC ID token issuer does not match discovery metadata');
+    }
 
+    if (this.config.expectedIssuer && idTokenClaims.iss !== this.config.expectedIssuer) {
+      throw new Error('OIDC ID token issuer does not match N8N_OIDC_EXPECTED_ISSUER');
+    }
+
+    let userInfo = {};
     if (tokens.access_token && metadata.userinfo_endpoint) {
       userInfo = await this.oidc.fetchUserInfo(
         configuration,
         tokens.access_token,
         idTokenClaims.sub,
       );
+
+      if (userInfo?.sub && userInfo.sub !== idTokenClaims.sub) {
+        throw new Error('OIDC UserInfo subject does not match ID token subject');
+      }
     }
 
     return {
@@ -81,8 +97,9 @@ export class N8nCommunityOidcClient {
       claims: {
         ...idTokenClaims,
         ...userInfo,
+        // Immutable identity claims always come from the validated ID token / metadata.
         sub: idTokenClaims.sub,
-        iss: idTokenClaims.iss ?? metadata.issuer,
+        iss: idTokenClaims.iss,
       },
     };
   }
