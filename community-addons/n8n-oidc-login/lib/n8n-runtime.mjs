@@ -1,9 +1,9 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const DEFAULT_ROOTS = [
+const DIRECT_ROOTS = [
   '/app/code/node_modules/n8n',
   '/usr/local/lib/node_modules/n8n',
 ];
@@ -17,15 +17,36 @@ async function exists(candidate) {
   }
 }
 
+async function findCloudronPnpmRoot() {
+  const store = '/app/code/node_modules/.pnpm';
+  if (!(await exists(store))) return undefined;
+
+  const entries = await readdir(store, { withFileTypes: true });
+  const candidates = entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('n8n@'))
+    .map((entry) => path.join(store, entry.name, 'node_modules', 'n8n'));
+
+  for (const candidate of candidates) {
+    if (await exists(path.join(candidate, 'package.json'))) return candidate;
+  }
+
+  return undefined;
+}
+
 async function detectN8nRoot(explicitRoot) {
-  const candidates = explicitRoot ? [explicitRoot, ...DEFAULT_ROOTS] : DEFAULT_ROOTS;
+  const candidates = [];
+  if (explicitRoot) candidates.push(explicitRoot);
+  candidates.push(...DIRECT_ROOTS);
 
   for (const candidate of [...new Set(candidates)]) {
     if (await exists(path.join(candidate, 'package.json'))) return candidate;
   }
 
+  const pnpmRoot = await findCloudronPnpmRoot();
+  if (pnpmRoot) return pnpmRoot;
+
   throw new Error(
-    `Unable to locate n8n runtime. Checked: ${[...new Set(candidates)].join(', ')}. ` +
+    'Unable to locate n8n runtime. Checked explicit/direct paths and Cloudron pnpm store. ' +
       'Set N8N_OIDC_N8N_ROOT explicitly if n8n is installed elsewhere.',
   );
 }
@@ -87,7 +108,9 @@ export async function loadN8nRuntime(explicitRoot) {
   ]);
 
   if (!authServicePath) {
-    throw new Error('Unsupported n8n runtime: AuthService implementation could not be located');
+    throw new Error(
+      `Unsupported n8n runtime ${packageJson.version}: AuthService implementation could not be located under ${n8nRoot}/dist`,
+    );
   }
 
   const { AuthService } = await import(pathToFileURL(authServicePath).href);

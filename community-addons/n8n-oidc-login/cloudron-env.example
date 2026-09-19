@@ -1,19 +1,24 @@
-# Append the addon preload. Do not discard an existing NODE_OPTIONS value.
-export NODE_OPTIONS="${NODE_OPTIONS:-} --import=/app/data/n8n-oidc-login/preload.mjs"
+# n8n Cloudron - Generic OIDC login addon
+# Keep this in /app/data/env.sh
+
+# NODE_OPTIONS is inherited by Node subprocesses; bootstrap.mjs activates the
+# addon only for the main n8n CLI process.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --import=/app/data/n8n-oidc-login/bootstrap.mjs"
 
 export N8N_OIDC_ENABLED=true
-# Optional because v0.2 autodetects this Cloudron path, but explicit is clearer.
-export N8N_OIDC_N8N_ROOT="/app/code/node_modules/n8n"
 
-# Cloudron supplies CLOUDRON_APP_ORIGIN to the app.
+# Leave N8N_OIDC_N8N_ROOT unset on current Cloudron packages.
+# The addon detects both direct installs and /app/code/node_modules/.pnpm/n8n@*/node_modules/n8n.
+# Set it only if autodetection fails.
+# export N8N_OIDC_N8N_ROOT="/app/code/node_modules/.pnpm/n8n@VERSION/node_modules/n8n"
+
 export N8N_OIDC_BASE_URL="${CLOUDRON_APP_ORIGIN}"
 
-# Create an external client in Cloudron: Users -> OpenID.
 export N8N_OIDC_DISCOVERY_URL="https://my.example.com/.well-known/openid-configuration"
 export N8N_OIDC_CLIENT_ID="replace-me"
 export N8N_OIDC_CLIENT_SECRET="replace-me"
 
-# Independent addon secret. Generate with:
+# Generate with:
 # node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 export N8N_OIDC_COOKIE_SECRET="replace-with-at-least-32-random-characters"
 
@@ -22,6 +27,6 @@ export N8N_OIDC_REQUIRE_EMAIL_VERIFIED=true
 export N8N_OIDC_ALLOW_EMAIL_LINKING=true
 export N8N_OIDC_MFA_MODE=idp-amr
 
-# Optional after confirming the exact claims emitted by your IdP:
+# Enable only after verifying the actual claim emitted by the IdP.
 # export N8N_OIDC_ALLOWED_GROUPS="n8n-users"
 # export N8N_OIDC_GROUPS_CLAIM="groups"

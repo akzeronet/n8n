@@ -1,6 +1,6 @@
 {
   "name": "n8n-community-oidc-login",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Generic OIDC login addon for self-hosted n8n without patching n8n core files.",
@@ -9,7 +9,7 @@
     "node": ">=22.16"
   },
   "scripts": {
-    "check": "for f in preload.mjs lib/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done",
+    "check": "for f in bootstrap.mjs preload.mjs lib/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done",
     "test": "node --test test/*.test.mjs"
   }
 }
