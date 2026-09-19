@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const DIRECT_ROOTS = [
+  '/app/code',
   '/app/code/node_modules/n8n',
   '/usr/local/lib/node_modules/n8n',
 ];
@@ -17,37 +18,41 @@ async function exists(candidate) {
   }
 }
 
+async function isN8nPackageRoot(candidate) {
+  try {
+    const pkg = JSON.parse(await readFile(path.join(candidate, 'package.json'), 'utf8'));
+    return pkg?.name === 'n8n';
+  } catch {
+    return false;
+  }
+}
+
 async function findCloudronPnpmRoot() {
   const store = '/app/code/node_modules/.pnpm';
   if (!(await exists(store))) return undefined;
 
   const entries = await readdir(store, { withFileTypes: true });
-  const candidates = entries
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith('n8n@'))
-    .map((entry) => path.join(store, entry.name, 'node_modules', 'n8n'));
-
-  for (const candidate of candidates) {
-    if (await exists(path.join(candidate, 'package.json'))) return candidate;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith('n8n@')) continue;
+    const candidate = path.join(store, entry.name, 'node_modules', 'n8n');
+    if (await isN8nPackageRoot(candidate)) return candidate;
   }
-
   return undefined;
 }
 
 async function detectN8nRoot(explicitRoot) {
-  const candidates = [];
-  if (explicitRoot) candidates.push(explicitRoot);
-  candidates.push(...DIRECT_ROOTS);
+  const candidates = explicitRoot ? [explicitRoot, ...DIRECT_ROOTS] : DIRECT_ROOTS;
 
   for (const candidate of [...new Set(candidates)]) {
-    if (await exists(path.join(candidate, 'package.json'))) return candidate;
+    if (await isN8nPackageRoot(candidate)) return candidate;
   }
 
   const pnpmRoot = await findCloudronPnpmRoot();
   if (pnpmRoot) return pnpmRoot;
 
   throw new Error(
-    'Unable to locate n8n runtime. Checked explicit/direct paths and Cloudron pnpm store. ' +
-      'Set N8N_OIDC_N8N_ROOT explicitly if n8n is installed elsewhere.',
+    'Unable to locate the n8n package root. Checked /app/code, direct node_modules paths, ' +
+      'the Cloudron pnpm store, and N8N_OIDC_N8N_ROOT when supplied.',
   );
 }
 
@@ -83,7 +88,7 @@ export async function loadN8nRuntime(explicitRoot) {
   try {
     await importResolved(runtimeRequire, 'reflect-metadata');
   } catch {
-    // Reflection metadata may already be initialized by n8n in newer runtimes.
+    // Reflection metadata may already be initialized by n8n.
   }
 
   const [decorators, di, db, openidClient] = await Promise.all([
@@ -109,7 +114,7 @@ export async function loadN8nRuntime(explicitRoot) {
 
   if (!authServicePath) {
     throw new Error(
-      `Unsupported n8n runtime ${packageJson.version}: AuthService implementation could not be located under ${n8nRoot}/dist`,
+      `Unsupported n8n runtime ${packageJson.version}: AuthService could not be located under ${n8nRoot}/dist`,
     );
   }
 
